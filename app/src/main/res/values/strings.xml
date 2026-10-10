@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Censorship</string>
+    <string name="accessibility_description">This service is required by CensorApp to read text on your screen in real-time and block offensive words before you see them.</string>
+</resources>
