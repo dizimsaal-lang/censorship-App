@@ -98,7 +98,7 @@ fun PebbleOnboardingScreen(onFinish: () -> Unit) {
             horizontalArrangement = Arrangement.Center,
             modifier = Modifier.padding(top = 12.dp)
         ) {
-            Icon(Icons.Default.Eco, contentDescription = "Pebble", tint = PebbleForest, modifier = Modifier.size(28.dp))
+            Icon(Icons.Default.Star, contentDescription = "Pebble", tint = PebbleForest, modifier = Modifier.size(28.dp))
             Spacer(modifier = Modifier.width(6.dp))
             Text("pebble", fontSize = 28.sp, fontWeight = FontWeight.Black, color = PebbleForest)
             Spacer(modifier = Modifier.width(8.dp))
@@ -135,17 +135,17 @@ fun PebbleOnboardingScreen(onFinish: () -> Unit) {
             // 3 Censorship Pillars
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.BlurOn, contentDescription = null, tint = PebbleForest, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Lock, contentDescription = null, tint = PebbleForest, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Text Blur", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = PebbleForest)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.VolumeOff, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Audio Bleep", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7C3AED))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.HideImage, contentDescription = null, tint = Color(0xFFB45309), modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Face, contentDescription = null, tint = Color(0xFFB45309), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Image Shield", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
                 }
@@ -258,7 +258,7 @@ fun PebbleShieldDashboard(settingsManager: SettingsManager, onNavigate: (String)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(modifier = Modifier.size(44.dp).background(PebbleForest, CircleShape), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
@@ -289,15 +289,15 @@ fun PebbleShieldDashboard(settingsManager: SettingsManager, onNavigate: (String)
 
             Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = PebbleCard)) {
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    PebbleCensorEngineRow("Zero-Lag Text Blur", "Exact word bounds frosted glass", Icons.Default.BlurOn, PebbleForest, isVisualOn) {
+                    PebbleCensorEngineRow("Zero-Lag Text Blur", "Exact word bounds frosted glass", Icons.Default.Lock, PebbleForest, isVisualOn) {
                         isVisualOn = it; settingsManager.isVisualCensorOn = it
                     }
                     HorizontalDivider(color = PebbleBorder)
-                    PebbleCensorEngineRow("Audio Bleeper Interceptor", "Vosk speech AI mutes video profanity", Icons.Default.VolumeOff, Color(0xFF7C3AED), isAudioOn) {
+                    PebbleCensorEngineRow("Audio Bleeper Interceptor", "Vosk speech AI mutes video profanity", Icons.Default.PlayArrow, Color(0xFF7C3AED), isAudioOn) {
                         isAudioOn = it; settingsManager.isAudioBleeperOn = it
                     }
                     HorizontalDivider(color = PebbleBorder)
-                    PebbleCensorEngineRow("Targeted Image Blocker", "Anti-blink pixelation on sensitive photos", Icons.Default.HideImage, Color(0xFFB45309), isImageOn) {
+                    PebbleCensorEngineRow("Targeted Image Blocker", "Anti-blink pixelation on sensitive photos", Icons.Default.Face, Color(0xFFB45309), isImageOn) {
                         isImageOn = it; settingsManager.isImageCensorOn = it
                     }
                 }
@@ -310,8 +310,8 @@ fun PebbleShieldDashboard(settingsManager: SettingsManager, onNavigate: (String)
             Spacer(modifier = Modifier.height(8.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                PebbleQuickStat("14", "Words softened", Icons.Default.BlurOn, PebbleForest, Modifier.weight(1f))
-                PebbleQuickStat("3", "Audio bleeps", Icons.Default.Hearing, Color(0xFF7C3AED), Modifier.weight(1f))
+                PebbleQuickStat("14", "Words softened", Icons.Default.Lock, PebbleForest, Modifier.weight(1f))
+                PebbleQuickStat("3", "Audio bleeps", Icons.Default.PlayArrow, Color(0xFF7C3AED), Modifier.weight(1f))
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -324,7 +324,7 @@ fun PebbleShieldDashboard(settingsManager: SettingsManager, onNavigate: (String)
                 border = androidx.compose.foundation.BorderStroke(1.dp, PebbleBorder)
             ) {
                 Row(modifier = Modifier.padding(14.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Shield, contentDescription = null, tint = PebbleForest, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Lock, contentDescription = null, tint = PebbleForest, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Preview Friendly Intercept Screen →", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = PebbleMuted)
                 }
@@ -445,7 +445,7 @@ fun PebbleInterceptScreen(onBack: () -> Unit) {
             IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = PebbleForest) }
             Surface(color = PebbleMint, shape = RoundedCornerShape(100)) {
                 Row(modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = PebbleForest, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = PebbleForest, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Pebble has your back", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = PebbleForest)
                 }
@@ -631,8 +631,8 @@ fun PebbleBottomNavigation(activeTab: String, onNavigate: (String) -> Unit) {
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            PebbleBottomNavItem("Shield", Icons.Default.Shield, activeTab == "SHIELD") { onNavigate("SHIELD") }
-            PebbleBottomNavItem("Blacklist", Icons.Default.Tune, activeTab == "BLACKLIST") { onNavigate("BLACKLIST") }
+            PebbleBottomNavItem("Shield", Icons.Default.Lock, activeTab == "SHIELD") { onNavigate("SHIELD") }
+            PebbleBottomNavItem("Blacklist", Icons.Default.Settings, activeTab == "BLACKLIST") { onNavigate("BLACKLIST") }
             PebbleBottomNavItem("Parents", Icons.Default.Lock, activeTab == "PARENT") { onNavigate("PARENT") }
         }
     }
