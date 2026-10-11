@@ -7,6 +7,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -14,25 +15,22 @@ import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
-import android.media.AudioAttributes
-import android.media.AudioFormat
-import android.media.AudioManager
-import android.media.AudioPlaybackCaptureConfiguration
-import android.media.AudioRecord
 import android.media.ImageReader
-import android.media.ToneGenerator
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
-import android.os.Looper
 import android.view.View
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
+import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.label.ImageLabeling
 import com.google.mlkit.vision.label.defaults.ImageLabelerOptions
+import com.google.mlkit.vision.objects.ObjectDetection
+import com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
@@ -44,21 +42,31 @@ class CensorService : Service() {
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
     
-    // Audio Capture Variables
-    private var audioRecord: AudioRecord? = null
-    private var isAudioRecording = false
-    private lateinit var toneGenerator: ToneGenerator
-    
+    // The Visual AI Engines
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     private val imageLabeler = ImageLabeling.getClient(ImageLabelerOptions.DEFAULT_OPTIONS)
+    private val objectDetector = ObjectDetection.getClient(
+        ObjectDetectorOptions.Builder()
+            .setDetectorMode(ObjectDetectorOptions.STREAM_MODE)
+            .enableMultipleObjects()
+            .build()
+    )
     
     private var badWords = emptyList<String>()
     private val nsfwLabels = listOf("weapon", "gun", "knife", "blood", "violence", "underwear", "swimwear", "flesh")
     
     private var isProcessing = false
-    private var isBatterySaverMode = true
-    private var lastCaptureTime = 0L
     private lateinit var settings: SettingsManager
+    
+    // Background thread for heavy AI processing
+    private val aiThread = HandlerThread("AIEngine").apply { start() }
+    private val aiHandler = Handler(aiThread.looper)
+    
+    // The Audio Bleeper
+    private var audioEngine: AudioEngine? = null
+    
+    // Memory to prevent blinking
+    private val currentCensors = mutableListOf<OverlayView.CensorData>()
 
     override fun onCreate() {
         super.onCreate()
@@ -67,14 +75,13 @@ class CensorService : Service() {
         
         settings = SettingsManager(this)
         badWords = settings.getBadWords().map { normalizeText(it) }
-        toneGenerator = ToneGenerator(AudioManager.STREAM_MUSIC, 100) // 100% Volume Bleep
     }
 
     @Suppress("DEPRECATION")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = NotificationCompat.Builder(this, "CENSOR_CHANNEL")
             .setContentTitle("CensorAI is Active")
-            .setContentText("Listening and scanning for bad content...")
+            .setContentText("Visual protection running...")
             .setSmallIcon(android.R.drawable.ic_menu_view)
             .build()
         startForeground(1, notification)
@@ -85,68 +92,15 @@ class CensorService : Service() {
         if (resultCode == Activity.RESULT_OK && resultData != null) {
             val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             mediaProjection = mpm.getMediaProjection(resultCode, resultData)
-            
-            // Start Visual and Audio Engines
             setupVirtualDisplay()
-            startAudioCapture()
+            
+            // Start the Audio Bleeper Engine
+            if (settings.isAudioBleeperOn) {
+                audioEngine = AudioEngine(this, mediaProjection!!, badWords)
+                audioEngine?.start()
+            }
         }
-
         return START_NOT_STICKY
-    }
-
-    // THE AUDIO BLEEPER ENGINE
-    private fun startAudioCapture() {
-        // AudioPlaybackCapture is only available on Android 10 (Q) and above
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
-        if (!settings.isAudioBleeperOn) return
-        
-        try {
-            val config = AudioPlaybackCaptureConfiguration.Builder(mediaProjection!!)
-                .addMatchingUsage(AudioAttributes.USAGE_MEDIA) // Only capture Videos/Games, not phone calls
-                .build()
-                
-            val format = AudioFormat.Builder()
-                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                .setSampleRate(16000)
-                .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
-                .build()
-                
-            audioRecord = AudioRecord.Builder()
-                .setAudioFormat(format)
-                .setAudioPlaybackCaptureConfig(config)
-                .build()
-                
-            audioRecord?.startRecording()
-            isAudioRecording = true
-            
-            Thread {
-                val buffer = ShortArray(1024)
-                while (isAudioRecording) {
-                    val read = audioRecord?.read(buffer, 0, buffer.size) ?: 0
-                    if (read > 0) {
-                        // ARCHITECTURE PLACEHOLDER: 
-                        // This is where we feed `buffer` into the on-device Vosk Speech-To-Text AI.
-                        // For demonstration, if Vosk returned a bad word:
-                        val detectedWord = runVoskAiPlaceholder(buffer)
-                        
-                        if (badWords.any { detectedWord.contains(it) }) {
-                            // BLEEP IT OUT!
-                            // Plays a loud censorship tone (like on TV) to drown out the bad word!
-                            toneGenerator.startTone(ToneGenerator.TONE_SUP_DIAL, 1000) // 1 second duration
-                        }
-                    }
-                }
-            }.start()
-            
-        } catch (e: SecurityException) {
-            // Missing RECORD_AUDIO permission
-        }
-    }
-    
-    private fun runVoskAiPlaceholder(audioBuffer: ShortArray): String {
-        // In a production app, the 50MB Vosk Model processes the audioBuffer here.
-        // Returns empty string so we don't randomly bleep.
-        return ""
     }
 
     private fun normalizeText(text: String): String {
@@ -191,115 +145,148 @@ class CensorService : Service() {
         imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
         
         virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "ScreenCapture",
-            width, height, density,
+            "ScreenCapture", width, height, density,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             imageReader?.surface, null, null
         )
 
         imageReader?.setOnImageAvailableListener({ reader ->
-            val currentTime = System.currentTimeMillis()
-            
-            if (isBatterySaverMode && (currentTime - lastCaptureTime) < 500) {
-                reader.acquireLatestImage()?.close()
-                return@setOnImageAvailableListener
-            }
-
-            if (isProcessing) {
-                reader.acquireLatestImage()?.close()
-                return@setOnImageAvailableListener
-            }
-            
             val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
-            isProcessing = true
-            lastCaptureTime = currentTime
             
-            try {
-                val planes = image.planes
-                val buffer = planes[0].buffer
-                val pixelStride = planes[0].pixelStride
-                val rowStride = planes[0].rowStride
-                val rowPadding = rowStride - pixelStride * width
+            if (isProcessing) {
+                image.close()
+                return@setOnImageAvailableListener
+            }
+            
+            isProcessing = true
+            
+            aiHandler.post {
+                try {
+                    val planes = image.planes
+                    val buffer = planes[0].buffer
+                    val pixelStride = planes[0].pixelStride
+                    val rowStride = planes[0].rowStride
+                    val rowPadding = rowStride - pixelStride * width
 
-                val bitmap = android.graphics.Bitmap.createBitmap(
-                    width + rowPadding / pixelStride, height, android.graphics.Bitmap.Config.ARGB_8888
-                )
-                bitmap.copyPixelsFromBuffer(buffer)
-                
-                val croppedBitmap = android.graphics.Bitmap.createBitmap(bitmap, 0, 0, width, height)
-                val inputImage = InputImage.fromBitmap(croppedBitmap, 0)
-                
-                val boxesToDraw = mutableListOf<Rect>()
-                
-                if (settings.isVisualCensorOn) {
-                    textRecognizer.process(inputImage).addOnSuccessListener { visionText ->
-                        for (block in visionText.textBlocks) {
+                    val rawBitmap = Bitmap.createBitmap(
+                        width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888
+                    )
+                    rawBitmap.copyPixelsFromBuffer(buffer)
+                    val bitmap = Bitmap.createBitmap(rawBitmap, 0, 0, width, height)
+                    
+                    val inputImage = InputImage.fromBitmap(bitmap, 0)
+                    val newFoundBoxes = mutableListOf<OverlayView.CensorData>()
+                    
+                    // 1. Text Engine
+                    if (settings.isVisualCensorOn) {
+                        val textResult = Tasks.await(textRecognizer.process(inputImage))
+                        for (block in textResult.textBlocks) {
                             for (line in block.lines) {
                                 for (element in line.elements) {
                                     val text = normalizeText(element.text)
                                     if (badWords.any { text.contains(it) }) {
-                                        element.boundingBox?.let { boxesToDraw.add(it) }
+                                        element.boundingBox?.let { rect ->
+                                            newFoundBoxes.add(OverlayView.CensorData(rect, createPixelatedBlur(bitmap, rect)))
+                                        }
                                     }
                                 }
                             }
                         }
-                        
-                        if (settings.isImageCensorOn) {
-                            imageLabeler.process(inputImage).addOnSuccessListener { labels ->
-                                for (label in labels) {
-                                    if (label.confidence > 0.7f && nsfwLabels.any { label.text.lowercase().contains(it) }) {
-                                        boxesToDraw.add(Rect(0, 0, width, height))
-                                        break
+                    }
+                    
+                    // 2. Targeted Image Engine
+                    if (settings.isImageCensorOn) {
+                        // Find all prominent objects/photos on the screen
+                        val objects = Tasks.await(objectDetector.process(inputImage))
+                        for (obj in objects) {
+                            val rect = obj.boundingBox
+                            if (rect.width() > 50 && rect.height() > 50) { // Ignore tiny icons
+                                val crop = createCrop(bitmap, rect)
+                                if (crop != null) {
+                                    // Scan just that specific photo for NSFW content
+                                    val labels = Tasks.await(imageLabeler.process(InputImage.fromBitmap(crop, 0)))
+                                    if (labels.any { it.confidence > 0.65f && nsfwLabels.any { bad -> it.text.lowercase().contains(bad) } }) {
+                                        newFoundBoxes.add(OverlayView.CensorData(rect, createPixelatedBlur(bitmap, rect)))
                                     }
                                 }
-                                overlayView.updateBoxes(boxesToDraw)
-                                finishProcessing(image)
-                            }.addOnFailureListener { finishProcessing(image) }
+                            }
+                        }
+                    }
+                    
+                    // 3. Anti-Blink Memory System
+                    val currentTime = System.currentTimeMillis()
+                    
+                    // Remove boxes that haven't been seen in 1000ms (1 second memory)
+                    currentCensors.removeAll { currentTime - it.lastSeenTime > 1000 }
+                    
+                    // Add new boxes, or refresh existing ones
+                    for (newBox in newFoundBoxes) {
+                        // Check if this box is already in memory (close coordinates)
+                        val existing = currentCensors.find { Rect.intersects(it.rect, newBox.rect) }
+                        if (existing != null) {
+                            existing.rect = newBox.rect
+                            existing.blurredBitmap = newBox.blurredBitmap
+                            existing.lastSeenTime = currentTime
                         } else {
-                            overlayView.updateBoxes(boxesToDraw)
-                            finishProcessing(image)
+                            newBox.lastSeenTime = currentTime
+                            currentCensors.add(newBox)
                         }
-                    }.addOnFailureListener { finishProcessing(image) }
-                } else if (settings.isImageCensorOn) {
-                    imageLabeler.process(inputImage).addOnSuccessListener { labels ->
-                        for (label in labels) {
-                            if (label.confidence > 0.7f && nsfwLabels.any { label.text.lowercase().contains(it) }) {
-                                boxesToDraw.add(Rect(0, 0, width, height))
-                                break
-                            }
-                        }
-                        overlayView.updateBoxes(boxesToDraw)
-                        finishProcessing(image)
-                    }.addOnFailureListener { finishProcessing(image) }
-                } else {
-                    finishProcessing(image)
+                    }
+                    
+                    // Push to UI
+                    Handler(Looper.getMainLooper()).post {
+                        overlayView.updateBoxes(currentCensors.toList())
+                    }
+                    
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    image.close()
+                    isProcessing = false
                 }
-            } catch (e: Exception) {
-                finishProcessing(image)
             }
-        }, Handler(Looper.getMainLooper()))
+        }, aiHandler)
     }
 
-    private fun finishProcessing(image: android.media.Image) {
-        isProcessing = false
-        image.close() 
+    private fun createCrop(source: Bitmap, rect: Rect): Bitmap? {
+        return try {
+            // Ensure bounds don't crash the cropper
+            val left = rect.left.coerceAtLeast(0)
+            val top = rect.top.coerceAtLeast(0)
+            val right = rect.right.coerceAtMost(source.width)
+            val bottom = rect.bottom.coerceAtMost(source.height)
+            if (right > left && bottom > top) {
+                Bitmap.createBitmap(source, left, top, right - left, bottom - top)
+            } else null
+        } catch (e: Exception) { null }
+    }
+
+    // Mathematical Frosted Glass / Pixelation effect
+    private fun createPixelatedBlur(source: Bitmap, rect: Rect): Bitmap? {
+        val crop = createCrop(source, rect) ?: return null
+        return try {
+            // Scale down to 1/15th size to destroy the details
+            val tinyWidth = (crop.width / 15).coerceAtLeast(1)
+            val tinyHeight = (crop.height / 15).coerceAtLeast(1)
+            val tiny = Bitmap.createScaledBitmap(crop, tinyWidth, tinyHeight, false)
+            
+            // Scale back up to create a heavy blocky "Minecraft" blur effect 
+            Bitmap.createScaledBitmap(tiny, crop.width, crop.height, false)
+        } catch (e: Exception) { null }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        isAudioRecording = false
-        audioRecord?.stop()
-        audioRecord?.release()
-        toneGenerator.release()
-        
+        audioEngine?.stop()
         virtualDisplay?.release()
         imageReader?.close()
         mediaProjection?.stop()
+        aiThread.quitSafely()
         if (::windowManager.isInitialized && ::overlayView.isInitialized) {
             windowManager.removeView(overlayView)
         }
     }
-
+    
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun createNotificationChannel() {
@@ -311,27 +298,54 @@ class CensorService : Service() {
 }
 
 class OverlayView(context: Context) : View(context) {
-    private val paint = Paint().apply {
-        color = Color.BLACK
-        style = Paint.Style.FILL
+    data class CensorData(
+        var rect: Rect,
+        var blurredBitmap: Bitmap?,
+        var lastSeenTime: Long = 0
+    )
+    
+    private val paint = Paint()
+    private var boxesToDraw = listOf<CensorData>()
+    private val handler = Handler(Looper.getMainLooper())
+    private val refreshRunnable = object : Runnable {
+        override fun run() {
+            // Force continuous redraws to smoothly fade out expired boxes
+            invalidate()
+            handler.postDelayed(this, 100)
+        }
     }
-    private var boxesToDraw = listOf<Rect>()
 
-    fun updateBoxes(boxes: List<Rect>) {
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        handler.post(refreshRunnable)
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        handler.removeCallbacks(refreshRunnable)
+    }
+
+    fun updateBoxes(boxes: List<CensorData>) {
         boxesToDraw = boxes
         invalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        val currentTime = System.currentTimeMillis()
+        
         for (box in boxesToDraw) {
-            canvas.drawRect(
-                (box.left - 10).toFloat(), 
-                (box.top - 10).toFloat(), 
-                (box.right + 10).toFloat(), 
-                (box.bottom + 10).toFloat(), 
-                paint
-            )
+            // Only draw if it hasn't expired
+            if (currentTime - box.lastSeenTime <= 1000) {
+                if (box.blurredBitmap != null) {
+                    // Draw the beautiful frosted glass / pixelated bitmap!
+                    canvas.drawBitmap(box.blurredBitmap!!, box.rect.left.toFloat(), box.rect.top.toFloat(), paint)
+                } else {
+                    // Fallback to black if blur fails
+                    paint.color = Color.BLACK
+                    canvas.drawRect(box.rect, paint)
+                }
+            }
         }
     }
 }
