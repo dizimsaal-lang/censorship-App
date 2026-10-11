@@ -5,14 +5,12 @@ plugins {
 
 android {
     namespace = "com.example.censorship"
-    compileSdk {
-        version = release(37)
-    }
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.example.censorship"
         minSdk = 24
-        targetSdk = 37
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
@@ -60,8 +58,8 @@ dependencies {
     // ML Kit for NSFW/Violence Image Detection
     implementation("com.google.android.gms:play-services-mlkit-image-labeling:16.0.8")
     
-    // ML Kit for Targeted Image Bounds (Finding where the photo is)
-    implementation("com.google.android.gms:play-services-mlkit-object-detection:17.0.0")
+    // ML Kit for Targeted Image Bounds
+    implementation("com.google.mlkit:object-detection:17.0.2")
     
     // Vosk Offline Speech-to-Text AI
     implementation("com.alphacephei:vosk-android:0.3.75@aar")
