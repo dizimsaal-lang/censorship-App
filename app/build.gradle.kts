@@ -64,7 +64,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-mlkit-object-detection:17.0.0")
     
     // Vosk Offline Speech-to-Text AI
-    implementation("com.alphacephei:vosk-android:0.3.47@aar")
-    implementation("net.java.dev.jna:jna:5.13.0@aar")
+    implementation("com.alphacephei:vosk-android:0.3.75@aar")
+    implementation("net.java.dev.jna:jna:5.18.1@aar")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 }
